@@ -1,126 +1,136 @@
-apiVersion: v1
+apiVersion: template.openshift.io/v1
 kind: Template
+metadata:
+  name: angular-web-app
+  annotations:
+    iconClass: icon-jboss
+    tags: nodejs, angular, web app
+    template.openshift.io/provider-display-name: "Red Hat, Inc."
+    description: Just building a little angular app with a web builder
+parameters:
+  - name: SOURCE_REPOSITORY_URL
+    description: The source URL for the application
+    displayName: Source URL
+    value: "https://github.com/branddcast/angular-tour-of-heroes.git"
+    required: true
+  - name: SOURCE_REPOSITORY_REF
+    description: The branch name for the application
+    displayName: Source Branch
+    value: master
+    required: true
+  - name: SOURCE_REPOSITORY_DIR
+    description: The location within the source repo of the application
+    displayName: Source Directory
+    value: .
+    required: true
+  - name: OUTPUT_DIR
+    description: The location of the compiled static files from your web apps builder
+    displayName: Output Directory
+    value: build
+    required: false
+  - name: APPLICATION_NAME
+    description: The name for the application
+    displayName: Name
+    value: angular-web-app
+    required: false
+objects:
+- apiVersion: v1
+  kind: ImageStream
   metadata:
-    name: angular-web-app
-    annotations:
-      iconClass: icon-jboss
-      tags: nodejs, angular, web app
-      template.openshift.io/provider-display-name: "Red Hat, Inc."
-      description: Just building a little angular app with a web builder
-  parameters:
-    - name: SOURCE_REPOSITORY_URL
-      description: The source URL for the application
-      displayName: Source URL
-      required: true
-    - name: SOURCE_REPOSITORY_REF
-      description: The branch name for the application
-      displayName: Source Branch
-      value: master
-      required: true
-    - name: SOURCE_REPOSITORY_DIR
-      description: The location within the source repo of the application
-      displayName: Source Directory
-      value: .
-      required: true
-    - name: OUTPUT_DIR
-      description: The location of the compiled static files from your web apps builder
-      displayName: Output Directory
-      value: build
-      required: false
-  objects:
-  - apiVersion: v1
-    kind: ImageStream
-    metadata:
-      name: angular-web-app-builder
-    spec: {}
-  - apiVersion: v1
-    kind: ImageStream
-    metadata:
-      name: angular-web-app-runtime
-    spec: {}
-  - apiVersion: v1
-    kind: ImageStream
-    metadata:
-      name: web-app-builder-runtime
-    spec:
-      tags:
-      - name: latest
+    name: ${APPLICATION_NAME}-builder
+    labels:
+      app: ${APPLICATION_NAME}
+  spec: {}
+- apiVersion: v1
+  kind: ImageStream
+  metadata:
+    name: ${APPLICATION_NAME}-runtime
+    labels:
+      app: ${APPLICATION_NAME}
+  spec: {}
+- apiVersion: v1
+  kind: ImageStream
+  metadata:
+    name: web-app-builder-runtime
+  spec:
+    tags:
+    - name: latest
+      from:
+        kind: ImageStreamTag
+        name: 'nodejs:14-ubi7'
+- apiVersion: v1
+  kind: ImageStream
+  metadata:
+    name: nginx-image-runtime
+  spec:
+    tags:
+    - name: latest
+      from:
+        kind: ImageStreamTag
+        name: 'nginx:1.16'
+- apiVersion: v1
+  kind: BuildConfig
+  metadata:
+    name: ${APPLICATION_NAME}-builder
+  spec:
+    output:
+      to:
+        kind: ImageStreamTag
+        name: ${APPLICATION_NAME}-builder:latest
+    postCommit: {}
+    resources: 
+      limits:
+        memory: 2Gi
+    source:
+      git:
+        uri: ${SOURCE_REPOSITORY_URL}
+        ref: ${SOURCE_REPOSITORY_REF}
+      contextDir: ${SOURCE_REPOSITORY_DIR}
+      type: git
+    strategy:
+      sourceStrategy:
+        env:
+          - name: OUTPUT_DIR
+            value: ${OUTPUT_DIR}
         from:
           kind: ImageStreamTag
-          namespace: openshift
-          name: 'nodejs:14-ubi8'
-  - apiVersion: v1
-    kind: ImageStream
-    metadata:
-      name: nginx-image-runtime
-    spec:
-      tags:
-      - name: latest
-        from:
-          kind: ImageStreamTag
-          namespace: openshift
-          name: 'nginx:1.16'
-  - apiVersion: v1
-    kind: BuildConfig
-    metadata:
-      name: angular-web-app-builder
-    spec:
-      output:
-        to:
-          kind: ImageStreamTag
-          name: angular-web-app-builder:latest
-      postCommit: {}
-      resources: {}
-      source:
-        git:
-          uri: ${SOURCE_REPOSITORY_URL}
-          ref: ${SOURCE_REPOSITORY_REF}
-        contextDir: ${SOURCE_REPOSITORY_DIR}
-        type: Git
-      strategy:
-        sourceStrategy:
-          env:
-            - name: OUTPUT_DIR
-              value: ${OUTPUT_DIR}
-          from:
-            kind: ImageStreamTag
-            name: web-app-builder-runtime:latest
-          incremental: true
-        type: Source
-      triggers:
+          name: web-app-builder-runtime:latest
+        incremental: true
+      type: Source
+    triggers:
       - type: ConfigChange
       - imageChange: {}
         type: ImageChange
-    status:
-      lastVersion: 0
-  - apiVersion: v1
-    kind: BuildConfig
-    metadata:
-      name: angular-web-app-runtime
-    spec:
-      output:
-        to:
-          kind: ImageStreamTag
-          name: angular-web-app-runtime:latest
-      postCommit: {}
-      resources: {}
-      source:
-        type: Image
-        images:
-          - from:
-              kind: ImageStreamTag
-              name: angular-web-app-builder:latest
-            paths:
-              - destinationDir: .
-                sourcePath: /opt/app-root/output/.
-      strategy:
-        sourceStrategy:
-          from:
+  status:
+    lastVersion: 0
+- apiVersion: v1
+  kind: BuildConfig
+  metadata:
+    name: ${APPLICATION_NAME}-runtime
+  spec:
+    output:
+      to:
+        kind: ImageStreamTag
+        name: ${APPLICATION_NAME}-runtime:latest
+    postCommit: {}
+    resources: {}
+    source: 
+      type: Image
+      images: 
+        - from: 
             kind: ImageStreamTag
-            name: nginx-image-runtime:latest
-          incremental: true
-        type: Source
-      triggers:
+            name: ${APPLICATION_NAME}-builder:latest
+          paths:
+            - destinationDir: .
+              sourcePath: '/opt/app-root/src/${OUTPUT_DIR}/.'
+    strategy: 
+      sourceStrategy:
+        from:
+          kind: ImageStreamTag
+          name: nginx-image-runtime:latest
+        incremental: true
+      type: Source
+    triggers:
       - type: ConfigChange
       - type: ImageChange
         imageChange: {}
@@ -128,76 +138,73 @@ kind: Template
         imageChange:
           from:
             kind: ImageStreamTag
-            name: angular-web-app-builder:latest
-    status:
-      lastVersion: 0
-  - apiVersion: v1
-    kind: DeploymentConfig
-    metadata:
-      labels:
-        app: angular-web-app
-      name: angular-web-app
-    spec:
-      replicas: 1
-      revisionHistoryLimit: 2
-      selector:
-        app: angular-web-app
-      strategy:
-        rollingParams:
-          timeoutSeconds: 3600
-        type: Rolling
-      template:
-        metadata:
-          labels:
-            app: angular-web-app
-        spec:
-          containers:
-          - env:
-            - name: KUBERNETES_NAMESPACE
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.namespace
-            image: angular-web-app-runtime
-            imagePullPolicy: IfNotPresent
-            name: angular-web-app-runtime
-            ports:
-            - containerPort: 8080
-              name: http
-              protocol: TCP
-        metadata:
-          labels:
-            app: angular-web-app
-      triggers:
-        - type: ConfigChange
-        - type: ImageChange
-          imageChangeParams:
-            automatic: true
-            containerNames:
-              - angular-web-app-runtime
-            from:
-              kind: ImageStreamTag
-              name: 'angular-web-app-runtime:latest'
-  - apiVersion: v1
-    kind: Service
-    metadata:
-      labels:
-        app: angular-web-app
-      name: angular-web-app
-    spec:
-      ports:
-      - name: http
-        port: 8080
-      selector:
-        app: angular-web-app
-  - apiVersion: v1
-    kind: Route
-    metadata:
-      labels:
-        app: angular-web-app
-      name: angular-web-app
-    spec:
-      port:
-        targetPort: 8080
-      to:
-        kind: Service
-        name: angular-web-app
+            name: ${APPLICATION_NAME}-builder:latest
+  status:
+    lastVersion: 0
+- apiVersion: v1
+  kind: DeploymentConfig
+  metadata:
+    labels:
+      app: ${APPLICATION_NAME}
+    name: ${APPLICATION_NAME}
+  spec:
+    replicas: 1
+    revisionHistoryLimit: 2
+    selector: 
+      app: ${APPLICATION_NAME}
+    strategy:
+      rollingParams:
+        timeoutSeconds: 3600
+      type: Rolling
+    template:
+      metadata:
+        labels:
+          app: ${APPLICATION_NAME}
+      spec:
+        containers:
+        - env:
+          - name: KUBERNETES_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+          image: ${APPLICATION_NAME}-runtime
+          imagePullPolicy: IfNotPresent
+          name: ${APPLICATION_NAME}-runtime
+          ports:
+          - containerPort: 8080
+            name: http
+            protocol: TCP
+    triggers:
+      - type: ConfigChange
+      - type: ImageChange
+        imageChangeParams:
+          automatic: true
+          containerNames:
+            - ${APPLICATION_NAME}-runtime
+          from:
+            kind: ImageStreamTag
+            name: ${APPLICATION_NAME}-runtime:latest
+- apiVersion: v1
+  kind: Service
+  metadata:
+    labels:
+      app: ${APPLICATION_NAME}
+    name: ${APPLICATION_NAME}
+  spec:
+    ports:
+    - name: http
+      port: 8080
+    selector:
+      app: ${APPLICATION_NAME}
+- apiVersion: v1
+  kind: Route
+  metadata:
+    labels:
+      app: ${APPLICATION_NAME}
+    name: ${APPLICATION_NAME}
+  spec:
+    port:
+      targetPort: 8080
+    to: 
+      kind: Service
+      name: ${APPLICATION_NAME}
