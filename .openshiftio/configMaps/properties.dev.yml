@@ -1,0 +1,10 @@
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: angular-web-app-dev
+  namespace: brandon-daniel-jaime-castillo-dev
+data: 
+  env.properties: |-
+    production=false
+    namespace=brandon-daniel-jaime-castillo-dev
+    env_app=developer

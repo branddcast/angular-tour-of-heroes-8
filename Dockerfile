@@ -1,7 +1,7 @@
 #------------------ DOCKER CONFIGURATION ------------------
 
 #Primera Etapa
-FROM node:14 as build-step
+FROM node:14-alpine as build-step
 
 RUN node --version 
 
@@ -25,7 +25,7 @@ COPY . /app
 RUN npm run build
 
 #Segunda Etapa
-FROM nginxinc/nginx-unprivileged
+FROM nginx:1.17.1-alpine
 
 USER root
 
