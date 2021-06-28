@@ -138,7 +138,12 @@ objects:
       strategy:
         rollingParams:
           timeoutSeconds: 3600
-        type: Rolling
+          pre:
+            failurePolicy: Abort
+            execNewPod:
+              containerName: helloworld 
+              command: [ "/usr/bin/command", "arg1", "arg2" ]
+        type: Recreate
       template:
         metadata:
           labels:

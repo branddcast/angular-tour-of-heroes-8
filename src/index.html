@@ -6,24 +6,9 @@
   <base href="/">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="icon" type="image/x-icon" href="favicon.ico">
-  <script src="assets/config.js"></script>
+  <script src="assets/env.js"></script>
 </head>
 <body>
-  <script>
-
-    let baseURL = config_app.host;
-    let envAPP  = config_app.env;
-    let apiAPP  = config_app.api;
-
-    document.addEventListener("DOMContentLoaded", () => {
-      let hostElement = document.getElementById("host");
-          hostElement.innerHTML += baseURL; 
-      let envAPPElement = document.getElementById("envAPP");
-          envAPPElement.innerHTML += envAPP; 
-      let apiAPPElement = document.getElementById("apiAPP");
-          apiAPPElement.innerHTML += apiAPP;
-    });
-  </script>
   <app-root></app-root>
 </body>
 </html>

@@ -29,4 +29,5 @@ FROM nginx:1.17.1-alpine
 
 USER root
 
+COPY --from=build-step /app/.sh /usr/share/nginx/env
 COPY --from=build-step /app/dist/angular-tour-of-heroes8 /usr/share/nginx/html
