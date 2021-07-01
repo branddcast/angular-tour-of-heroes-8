@@ -129,6 +129,7 @@ objects:
     metadata:
       labels:
         app: '${APPLICATION_NAME}'
+        app.openshift.io/runtime: 'angularjs'
       name: '${APPLICATION_NAME}'
     spec:
       replicas: 1
@@ -137,13 +138,7 @@ objects:
         app: '${APPLICATION_NAME}'
       strategy:
         rollingParams:
-          timeoutSeconds: 3600
-          pre:
-            failurePolicy: Abort
-            execNewPod:
-              containerName: helloworld 
-              command: [ "/usr/bin/command", "arg1", "arg2" ]
-        type: Recreate
+        type: Rolling
       template:
         metadata:
           labels:
@@ -167,6 +162,15 @@ objects:
                 - containerPort: 8080
                   name: http
                   protocol: TCP
+              lifecycle:
+                postStart:
+                  exec:
+                    command:
+                      - /bin/sh
+                      - '-c'
+                      - >-
+                        echo $ENV_APP > /opt/app-root/src/assets/env.js; cat
+                        /opt/app-root/src/assets/env.js
       triggers:
         - type: ConfigChange
         - type: ImageChange
@@ -181,7 +185,7 @@ parameters:
   - name: SOURCE_REPOSITORY_URL
     displayName: Source URL
     description: The source URL for the application
-    value: 'https://github.com/branddcast/angular-tour-of-heroes.git'
+    value: 'https://github.com/branddcast/angular-tour-of-heroes-8.git'
     required: true
   - name: SOURCE_REPOSITORY_REF
     displayName: Source Branch
