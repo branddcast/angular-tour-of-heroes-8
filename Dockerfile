@@ -25,6 +25,8 @@
 # RUN npm run build
 
 # #Segunda Etapa
+FROM openshift/rhscl/nginx-116-rhel7:latest
+
 # Add application sources to a directory that the assemble script expects them
 # and set permissions so that the container runs without root access
 USER 0
