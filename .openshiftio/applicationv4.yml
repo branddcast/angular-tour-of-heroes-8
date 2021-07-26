@@ -1,0 +1,336 @@
+kind: Template
+apiVersion: template.openshift.io/v1
+metadata:
+  name: angular-web-app-with-env-push
+  namespace: brandon-daniel-jaime-castillo-dev
+  annotations:
+    description: Just building a little angular app with a web builder
+    iconClass: icon-angularjs
+    tags: 'nodejs, angular, web app'
+    template.openshift.io/bindable: 'false'
+    template.openshift.io/provider-display-name: 'Red Hat, Inc.'
+objects:
+  - apiVersion: v1
+    kind: Service
+    metadata:
+      labels:
+        app: '${APPLICATION_NAME}'
+      name: '${APPLICATION_NAME}'
+    spec:
+      ports:
+        - name: http
+          port: 8080
+      selector:
+        app: '${APPLICATION_NAME}'
+  - apiVersion: v1
+    kind: Route
+    metadata:
+      labels:
+        app: '${APPLICATION_NAME}'
+      name: '${APPLICATION_NAME}'
+    spec:
+      port:
+        targetPort: 8080
+      to:
+        kind: Service
+        name: '${APPLICATION_NAME}'
+  - apiVersion: v1
+    kind: ImageStream
+    metadata:
+      name: '${APPLICATION_NAME}-builder'
+      labels:
+        app: '${APPLICATION_NAME}'
+    spec: {}
+  - apiVersion: v1
+    kind: ImageStream
+    metadata:
+      name: '${APPLICATION_NAME}-runtime'
+      labels:
+        app: '${APPLICATION_NAME}'
+    spec: {}
+  - apiVersion: build.openshift.io/v1
+    kind: BuildConfig
+    metadata:
+      name: '${APPLICATION_NAME}-builder'
+    spec:
+      output:
+        to:
+          kind: ImageStreamTag
+          name: '${APPLICATION_NAME}-builder:latest'
+      postCommit: {}
+      resources:
+        limits:
+          memory: 2Gi
+      source:
+        git:
+          uri: '${SOURCE_REPOSITORY_URL}'
+          ref: '${SOURCE_REPOSITORY_REF}'
+        contextDir: '${SOURCE_REPOSITORY_DIR}'
+        type: git
+      strategy:
+        sourceStrategy:
+          env:
+            - name: OUTPUT_DIR
+              value: '${OUTPUT_DIR}'
+          from:
+            kind: ImageStreamTag
+            namespace: openshift
+            name: 'nodejs:${NODE_VERSION}'
+          incremental: true
+        type: Source
+      runPolicy: Serial
+      triggers:
+        - type: ConfigChange
+        - type: ImageChange
+    status:
+      lastVersion: 0
+  - apiVersion: build.openshift.io/v1
+    kind: BuildConfig
+    metadata:
+      name: '${APPLICATION_NAME}-runtime'
+    spec:
+      output:
+        to:
+          kind: ImageStreamTag
+          name: '${APPLICATION_NAME}-runtime:latest'
+      postCommit: {}
+      resources: {}
+      source:
+        type: Dockerfile
+        dockerfile: >-
+
+          FROM image-registry.openshift-image-registry.svc:5000/brandon-daniel-jaime-castillo-dev/${APPLICATION_NAME}-builder AS build
+
+          FROM image-registry.openshift-image-registry.svc:5000/openshift/nginx AS cached
+
+          USER 1001
+
+          RUN if [ -s /usr/libexec/s2i/save-artifacts ]; then
+          /usr/libexec/s2i/save-artifacts > /tmp/artifacts.tar; else touch
+          /tmp/artifacts.tar; fi
+
+          FROM registry.redhat.io/rhscl/nginx-${NGINX_VERSION}-rhel7
+
+          LABEL
+          "io.openshift.build.image"="image-registry.openshift-image-registry.svc:5000/openshift/nginx"      
+          "io.openshift.build.source-location"="/tmp/build/inputs"
+
+          ENV OPENSHIFT_BUILD_NAMESPACE="brandon-daniel-jaime-castillo-dev"
+
+          USER root
+
+          COPY --from=cached /tmp/artifacts.tar /tmp/artifacts.tar
+
+          COPY --from=build /opt/app-root/src/${OUTPUT_DIR}/.
+          /tmp/src
+
+          COPY --from=build /opt/app-root/src/.sh/. /tmp/env
+
+          USER 1001
+
+          RUN if [ -s /tmp/artifacts.tar ]; then mkdir -p /tmp/artifacts; tar -xf
+          /tmp/artifacts.tar -C /tmp/artifacts; fi &&     rm /tmp/artifacts.tar
+
+          RUN /usr/libexec/s2i/assemble
+
+          RUN ["/bin/sh", "-c", "source /tmp/env/$SH_FILE.sh; envsubst <
+          /opt/app-root/src/assets/env.template.js >
+          /opt/app-root/src/assets/env.js; rm -rf /opt/app-root/src/sh"]
+
+          CMD /usr/libexec/s2i/run
+      strategy:
+        type: Docker
+        dockerStrategy:
+          env:
+            - name: SH_FILE
+              value: prod
+          forcePull: true
+      runPolicy: Serial
+      triggers:
+        - type: ConfigChange
+        - type: ImageChange
+          imageChange: {}
+        - type: ImageChange
+          imageChange:
+            from:
+              kind: ImageStreamTag
+              name: '${APPLICATION_NAME}-builder:latest'
+    status:
+      lastVersion: 0
+  - apiVersion: v1
+    kind: DeploymentConfig
+    metadata:
+      labels:
+        app: '${APPLICATION_NAME}'
+        app.openshift.io/runtime: 'angularjs'
+      name: '${APPLICATION_NAME}'
+    spec:
+      replicas: 1
+      revisionHistoryLimit: 2
+      selector:
+        app: '${APPLICATION_NAME}'
+      strategy:
+        rollingParams:
+        type: Rolling
+      template:
+        metadata:
+          labels:
+            app: '${APPLICATION_NAME}'
+        spec:
+          containers:
+            - image: '${APPLICATION_NAME}-runtime'
+              imagePullPolicy: IfNotPresent
+              name: '${APPLICATION_NAME}-runtime'
+              ports:
+                - containerPort: 8080
+                  name: http
+                  protocol: TCP
+              env:
+                - name: KUBERNETES_NAMESPACE
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.namespace
+                - name: ENV_APP
+                  valueFrom:
+                    configMapKeyRef:
+                      name: angular-web-app-prod
+                      key: env.properties
+            - image: openshift/buildah:latest
+              name: buildah
+              volumeMounts:
+              - mountPath: /var/quayio
+                name: secret-quay
+                readOnly: true
+              env:
+              - name: SECRET_QUAY
+                valueFrom:
+                  secretKeyRef:
+                    name: branddcast-pull-secret-quay
+                    key: .dockerconfigjson
+          volumes:
+          - name: secret-quay
+            projected:
+              sources:
+                - secret:
+                    name: mysecret
+                    items:
+                      - key: branddcast-pull-secret-quay
+                        path: secrets/.dockerconfigjson
+      triggers:
+        - type: ConfigChange
+        - type: ImageChange
+          imageChangeParams:
+            automatic: true
+            containerNames:
+              - '${APPLICATION_NAME}-runtime'
+            from:
+              kind: ImageStreamTag
+              name: '${APPLICATION_NAME}-runtime:latest'
+parameters:
+  - name: SOURCE_REPOSITORY_URL
+    displayName: Source URL
+    description: The source URL for the application
+    value: 'https://github.com/branddcast/angular-tour-of-heroes-8.git'
+    required: true
+  - name: SOURCE_REPOSITORY_REF
+    displayName: Source Branch
+    description: The branch name for the application
+    value: master
+    required: true
+  - name: SOURCE_REPOSITORY_DIR
+    displayName: Source Directory
+    description: The location within the source repo of the application
+    value: .
+    required: true
+  - name: OUTPUT_DIR
+    displayName: Output Directory
+    description: The location of the compiled static files from your web apps builder
+    value: build
+  - name: APPLICATION_NAME
+    displayName: Name
+    description: The name for the application
+    value: angular-web-app
+  - name: NODE_VERSION
+    displayName: 'NodeJs 14-ubi8, 14-ubi7, 12-ubi7, etc.'
+    description: The nodejs version for building
+    value: 14-ubi8
+    required: true
+  - name: NGINX_VERSION
+    displayName: 'Nginx 116, 118, etc'
+    description: The nginx version for -runtime
+    value: '116'
+    required: true
+
+
+
+# FROM registry.redhat.io/rhel8/buildah
+
+#       USER root
+
+#       RUN ["/bin/sh", "-c", "echo $QUAY_SECRET > /tmp/quay_secret.json"]
+
+#       RUN buildah images
+
+#       #RUN buildah tag --storage-driver vfs angular-web-app
+
+#       RUN buildah push --storage-driver vfs --authfile /tmp/quay_secret.json
+#       quay.io/branddcast/angular:latest
+
+
+      volumes:
+        - name: secret-quay
+          secret:
+            secretName: branddcast-pull-secret-quay
+            defaultMode: 420
+
+
+
+
+            - name: buildah
+          image: registry.redhat.io/rhel8/buildah
+          env:
+            - name: SECRET_QUAY
+              valueFrom:
+                secretKeyRef:
+                  name: branddcast-pull-secret-quay
+                  key: .dockerconfigjson
+          resources: {}
+          volumeMounts:
+            - name: secret-quay
+              mountPath: /var/quayio
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          imagePullPolicy: Always
+
+
+
+          - name: buildah
+          image: registry.redhat.io/rhel8/buildah
+          resources:
+            limits:
+              cpu: '3'
+              memory: 2Gi
+            requests:
+              memory: 2Gi
+
+        - name: angular-d-runtime
+          image: >-
+            image-registry.openshift-image-registry.svc:5000/brandon-daniel-jaime-castillo-dev/angular-d-runtime@sha256:bc4e32076c687a41c68df95619bdb5b9d40256245212b49ef392d0f210f78013
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: KUBERNETES_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: metadata.namespace
+          resources:
+            limits:
+              memory: 2Gi
+            requests:
+              memory: 1Gi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          imagePullPolicy: IfNotPresent

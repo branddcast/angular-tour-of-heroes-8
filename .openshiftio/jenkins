@@ -1,0 +1,365 @@
+pipeline {
+    agent any
+
+    parameters {
+        string(name: 'SOURCE_REPOSITORY_URL', defaultValue: 'https://github.com/branddcast/angular-tour-of-heroes-8.git', description: 'The source URL for the application')
+        string(name: 'SOURCE_REPOSITORY_REF', defaultValue: 'main', description: 'The branch name for the application')
+        string(name: 'SOURCE_REPOSITORY_DIR', defaultValue: '.', description: 'The location within the source repo of the application')
+        string(name: 'OUTPUT_DIR', defaultValue: 'dist/angular-tour-of-heroes8', description: 'The location of the compiled static files from your web apps builder')
+        string(name: 'APPLICATION_NAME', defaultValue: 'angular-cicd', description: 'The name for the application')
+        string(name: 'NODE_VERSION', defaultValue: '14-ubi8', description: 'The nodejs version for building')
+        string(name: 'NGINX_VERSION', defaultValue: '116', description: 'The nginx version for -runtime')
+        string(name: 'SH_FILE', defaultValue: 'prod', description: 'File to export and use the environment vars')
+        booleanParam(name: 'START_DEPLOY_ONLY', defaultValue: false, description: 'Focus only deploy stage. Change the app environment')
+    }
+
+    stages {
+        stage('Sources') {
+            when {
+                expression {
+                    return !params.START_DEPLOY_ONLY
+                }
+            }
+                
+            steps {
+                script {
+                    openshift.withCluster() {
+                        openshift.withProject() {
+                            def service = [
+                                "apiVersion": "v1",
+                                "kind": "Service",
+                                "metadata": [
+                                    "labels": [
+                                        "app": params.APPLICATION_NAME
+                                    ],
+                                    "name": params.APPLICATION_NAME     
+                                ],
+                                "spec": [
+                                    "selector": [
+                                        "app": params.APPLICATION_NAME
+                                    ],
+                                    "ports": [
+                                        [
+                                            "name": "http",
+                                            "port": 8080
+                                        ]
+                                    ]
+                                ],
+                                "selector": [
+                                    "app": params.APPLICATION_NAME
+                                ]
+                            ]
+                            def route = [
+                                "apiVersion": "route.openshift.io/v1",
+                                "kind": "Route",
+                                "metadata": [
+                                    "labels": [
+                                        "app": params.APPLICATION_NAME
+                                    ],
+                                    "name": params.APPLICATION_NAME,
+                                ],
+                                "spec": [
+                                    "port": [
+                                        "targetPort": "8080"
+                                    ],
+                                    "to": [
+                                        "kind": "Service",
+                                        "name": params.APPLICATION_NAME
+                                    ]
+                                ]
+                            ]
+                            def imgStrmBuilder = [
+                                "apiVersion": "v1",
+                                "kind": "ImageStream",
+                                "metadata": [
+                                    "name": params.APPLICATION_NAME+'-builder',
+                                    "labels": [
+                                        "app": params.APPLICATION_NAME
+                                    ]
+                                ]
+                            ]
+                            def imgStrmRuntime = [
+                                "apiVersion": "v1",
+                                "kind": "ImageStream",
+                                "metadata": [
+                                    "name": params.APPLICATION_NAME+'-runtime',
+                                    "labels": [
+                                        "app": params.APPLICATION_NAME
+                                    ]
+                                ]
+                            ]
+                            
+                            if(openshift.selector('service/'+params.APPLICATION_NAME).exists() == false){
+                                echo "No existe el servicio"
+                                def serviceObj = openshift.create(service, '--save-config')
+                                echo "The service (${params.APPLICATION_NAME}) is created succesfully..."
+                            }
+                            
+                            if(openshift.selector('route/'+params.APPLICATION_NAME).exists() == false){
+                                echo "No existe la ruta"
+                                def routeObj = openshift.create(route, '--save-config')
+                                echo "The route (${params.APPLICATION_NAME}) is created succesfully..."
+                            }
+                            
+                            if(openshift.selector('imagestream/'+params.APPLICATION_NAME+'-builder').exists() == false){
+                                echo "No existe la imagen builder"
+                                def imgStrmBuilderObj = openshift.create(imgStrmBuilder, '--save-config')
+                                echo "The ImageStream (${params.APPLICATION_NAME}-builder) is created succesfully..."
+                            }
+                            
+                            if(openshift.selector('imagestream/'+params.APPLICATION_NAME+'-runtime').exists() == false){
+                                echo "No existe la imagen runtime"
+                                def imgStrmRuntimeObj = openshift.create(imgStrmRuntime, '--save-config')
+                                echo "The ImageStream (${params.APPLICATION_NAME}-runtime) is created succesfully..."
+                            }
+                            
+                        }
+                    }
+                }
+            }
+        }
+        
+        stage('Build') {
+            when {
+                expression {
+                    return !params.START_DEPLOY_ONLY
+                }
+            }
+            
+            steps {
+                script {
+                    openshift.withCluster() {
+                        openshift.withProject() {
+                            def buildConfigBuilder = [
+                                "apiVersion": "build.openshift.io/v1",
+                                "kind": "BuildConfig",
+                                "metadata": [
+                                    "name": params.APPLICATION_NAME+'-builder'
+                                ],
+                                "spec": [
+                                    "output": [
+                                        "to": [
+                                          "kind": "ImageStreamTag",
+                                          "name": params.APPLICATION_NAME+'-builder:latest'
+                                        ]
+                                    ],
+                                    "resources": [
+                                        "limits": [
+                                            "memory": "2Gi"
+                                        ]
+                                    ],
+                                    "source": [
+                                        "git": [
+                                            "uri": params.SOURCE_REPOSITORY_URL,
+                                            "ref": params.SOURCE_REPOSITORY_REF
+                                        ],
+                                        "contextDir": params.SOURCE_REPOSITORY_DIR,
+                                        "type": "git"
+                                    ],
+                                    "strategy": [
+                                        "sourceStrategy": [
+                                            "env": [
+                                                [
+                                                    "name": "OUTPUT_DIR",
+                                                    "value": params.OUTPUT_DIR
+                                                ]
+                                            ],
+                                            "from": [
+                                                "kind": "ImageStreamTag",
+                                                "namespace": "openshift",
+                                                "name": 'nodejs:'+params.NODE_VERSION
+                                            ],
+                                            "incremental": true
+                                        ],
+                                        "type": "Source"
+                                    ],
+                                    "runPolicy": "Serial",
+                                    "triggers":[
+                                        [ "type": "ConfigChange" ],
+                                        [ "type": "ImageChange", "paused": true ]
+                                    ]
+                                ],
+                                "status": [
+                                  "lastVersion": 0
+                                ]
+                            ]
+                            
+                            def isBcBuilder = openshift.selector('buildconfig/'+params.APPLICATION_NAME+'-builder').exists()
+                            
+                            if(isBcBuilder == false){
+                                echo "No existe el build builder"
+                                def buildConfigBuilderObj = openshift.create(buildConfigBuilder, '--save-config')
+                                echo "The BuildConfig (${params.APPLICATION_NAME}-builder) is created succesfully..."
+                            }
+                            
+                            echo "Starting to build the 1st stage... ("+params.APPLICATION_NAME+"-builder)"
+                            def bcBuilder = openshift.selector('bc', params.APPLICATION_NAME+"-builder")
+                            if(isBcBuilder) 
+                                bcBuilder.startBuild()
+                                    
+                            def buildsBuilder = bcBuilder.related("builds")
+                            timeout(15) {
+                                buildsBuilder.untilEach(1) {
+                                    return (it.object().status.phase == "Complete")
+                                }
+                            }
+                            
+                        }
+                    }
+                }
+            }
+        }
+        
+        stage('Deploy'){
+            steps {
+                script {
+                    openshift.withCluster() {
+                        openshift.withProject() {
+                            
+                            def buildConfigRuntime = [
+                                "apiVersion": "build.openshift.io/v1",
+                                "kind": "BuildConfig",
+                                "metadata": [
+                                    "name": params.APPLICATION_NAME+'-runtime'
+                                ],
+                                "spec": [
+                                    "output": [
+                                        "to": [
+                                          "kind": "DockerImage",
+                                          "name": "quay.io/branddcast/angular:latest"
+                                        ],
+                                        "pushSecret": [
+                                            "name": "quayio"
+                                        ]
+                                    ],
+                                    "strategy": [
+                                        "type": "Docker",
+                                        "dockerStrategy": [
+                                            "forcePull": true
+                                        ]
+                                    ],
+                                    "source": [
+                                        "type": "Dockerfile",
+                                        "dockerfile": "FROM image-registry.openshift-image-registry.svc:5000/brandon-daniel-jaime-castillo-dev/"+params.APPLICATION_NAME+"-builder AS build\n\nFROM image-registry.openshift-image-registry.svc:5000/openshift/nginx AS cached\n\nUSER 1001\n\nRUN if [ -s /usr/libexec/s2i/save-artifacts ]; then /usr/libexec/s2i/save-artifacts > /tmp/artifacts.tar; else touch /tmp/artifacts.tar; fi\n\nFROM registry.redhat.io/rhscl/nginx-"+params.NGINX_VERSION+"-rhel7\n\nLABEL 'io.openshift.build.image'='image-registry.openshift-image-registry.svc:5000/openshift/nginx' 'io.openshift.build.source-location'='/tmp/build/inputs'\n\nENV OPENSHIFT_BUILD_NAMESPACE='brandon-daniel-jaime-castillo-dev'\n\nUSER root\n\nCOPY --from=cached /tmp/artifacts.tar /tmp/artifacts.tar\n\nCOPY --from=build /opt/app-root/src/"+params.OUTPUT_DIR+"/. /tmp/src\n\nCOPY --from=build /opt/app-root/src/.sh/. /tmp/env\n\nUSER 1001\n\nRUN if [ -s /tmp/artifacts.tar ]; then mkdir -p /tmp/artifacts; tar -xf /tmp/artifacts.tar -C /tmp/artifacts; fi && rm /tmp/artifacts.tar\n\nRUN /usr/libexec/s2i/assemble\n\nRUN [\"/bin/sh\", \"-c\", \"source /tmp/env/"+params.SH_FILE+".sh; envsubst < /opt/app-root/src/assets/env.template.js > /opt/app-root/src/assets/env.js; rm -rf /opt/app-root/src/sh\"]\n\nCMD /usr/libexec/s2i/run"
+                                    ],
+                                    "runPolicy": "Serial",
+                                    "triggers":[
+                                        [ "type": "ConfigChange" ],
+                                        [ "type": "ImageChange", "paused": true ]
+                                    ]
+                                ],
+                                "status": [
+                                  "lastVersion": 0
+                                ]
+                            ]
+                            def deployConfig = [
+                                "apiVersion": "v1",
+                                "kind": "DeploymentConfig",
+                                "metadata": [
+                                    "labels": [
+                                        "app": params.APPLICATION_NAME,
+                                        "app.openshift.io/runtime": 'angularjs'
+                                    ],
+                                    name: params.APPLICATION_NAME
+                                ],
+                                "spec": [
+                                    "replicas": 1,
+                                    "revisionHistoryLimit": 2,
+                                    "selector": [
+                                        "app": params.APPLICATION_NAME
+                                    ],
+                                    "strategy": [
+                                        "type": "Rolling"
+                                    ],
+                                    "template": [
+                                        "metadata": [
+                                            "labels": [
+                                                "app": params.APPLICATION_NAME
+                                            ]
+                                        ],
+                                        "spec": [
+                                            "containers": [
+                                                [
+                                                    "image": "quay.io/branddcast/angular:latest",
+                                                    "imagePullPolicy": "Always",
+                                                    "name": params.APPLICATION_NAME+'-runtime',
+                                                    "ports": [
+                                                        [
+                                                            "containerPort": 8080,
+                                                            "name": "http",
+                                                            "protocol": "TCP"
+                                                        ]
+                                                    ],
+                                                    "env": [
+                                                        [
+                                                            "name": "KUBERNETES_NAMESPACE",
+                                                            "valueFrom": [
+                                                                "fieldRef": [
+                                                                    "fieldPath": "metadata.namespace"
+                                                                ]
+                                                            ]
+                                                        ]
+                                                    ]
+                                                ]
+                                            ],
+                                            "imagePullSecrets": [
+                                                ["name": "quayio"]
+                                            ]
+                                        ]
+                                    ],
+                                    "triggers": [
+                                        ["type": "ConfigChange"]
+                                    ]
+                                ]
+                            ]
+                            
+                            def isBcRuntime = openshift.selector('buildconfig/'+params.APPLICATION_NAME+'-runtime').exists()
+                            def isDc = openshift.selector('deploymentconfig/'+params.APPLICATION_NAME).exists()
+                            
+                            if(isBcRuntime == false){
+                                echo "No existe el build runtime"
+                                def buildConfigRuntimeObj = openshift.create(buildConfigRuntime, '--save-config')
+                                echo "The BuildConfig (${params.APPLICATION_NAME}-runtime) is created succesfully..."
+                            }
+                            
+                            echo "Starting to build the 2nd stage... ("+params.APPLICATION_NAME+"-runtime)"
+                            echo "Replacing SH_FILE value to <${params.SH_FILE}>"
+                            def runtimeObj = openshift.selector('bc', params.APPLICATION_NAME+"-runtime").object()
+                                runtimeObj.spec.source['dockerfile'] = "FROM image-registry.openshift-image-registry.svc:5000/brandon-daniel-jaime-castillo-dev/"+params.APPLICATION_NAME+"-builder:latest AS build\n\nFROM image-registry.openshift-image-registry.svc:5000/openshift/nginx AS cached\n\nUSER 1001\n\nRUN if [ -s /usr/libexec/s2i/save-artifacts ]; then /usr/libexec/s2i/save-artifacts > /tmp/artifacts.tar; else touch /tmp/artifacts.tar; fi\n\nFROM registry.redhat.io/rhscl/nginx-"+params.NGINX_VERSION+"-rhel7\n\nLABEL 'io.openshift.build.image'='image-registry.openshift-image-registry.svc:5000/openshift/nginx' 'io.openshift.build.source-location'='/tmp/build/inputs'\n\nENV OPENSHIFT_BUILD_NAMESPACE='brandon-daniel-jaime-castillo-dev'\n\nUSER root\n\nCOPY --from=cached /tmp/artifacts.tar /tmp/artifacts.tar\n\nCOPY --from=build /opt/app-root/src/"+params.OUTPUT_DIR+"/. /tmp/src\n\nCOPY --from=build /opt/app-root/src/.sh/. /tmp/env\n\nUSER 1001\n\nRUN if [ -s /tmp/artifacts.tar ]; then mkdir -p /tmp/artifacts; tar -xf /tmp/artifacts.tar -C /tmp/artifacts; fi && rm /tmp/artifacts.tar\n\nRUN /usr/libexec/s2i/assemble\n\nRUN [\"/bin/sh\", \"-c\", \"source /tmp/env/"+params.SH_FILE+".sh; envsubst < /opt/app-root/src/assets/env.template.js > /opt/app-root/src/assets/env.js\"]\n\nCMD /usr/libexec/s2i/run"
+                                openshift.apply(runtimeObj)
+                            echo "Runtime stage has starting to building..."
+                            def bcRuntime = openshift.selector('bc', params.APPLICATION_NAME+"-runtime")
+                                
+                            if(isBcRuntime)
+                                bcRuntime.startBuild()
+                            
+                            def buildsRuntime = bcRuntime.related("builds")
+                            timeout(10) {
+                                buildsRuntime.untilEach(1) {
+                                    return (it.object().status.phase == "Complete")
+                                }
+                            }
+                            
+                            if(isDc == false){
+                                def deployConfigObj = openshift.create(deployConfig, '--save-config')
+                                echo "The DeployConfig (${params.APPLICATION_NAME}) is created succesfully..."
+                            }
+                            
+                            if(isDc){
+                                openshift.selector('dc', params.APPLICATION_NAME).rollout().latest()
+                                def latestDeploymentVersion = openshift.selector('dc', params.APPLICATION_NAME).object().status.latestVersion
+                                def rc = openshift.selector('rc', params.APPLICATION_NAME+"-${latestDeploymentVersion}")
+                                timeout (time: 10, unit: 'MINUTES') {
+                                    rc.untilEach(1){
+                                        def rcMap = it.object()
+                                        return (rcMap.status.replicas.equals(rcMap.status.readyReplicas))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
