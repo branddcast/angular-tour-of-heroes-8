@@ -42,3 +42,21 @@ RUN /usr/libexec/s2i/assemble
 RUN /bin/sh -c source /opt/app-root/src/sh/$SH_FILE.sh; envsubst < /opt/app-root/src/assets/env.template.js > /opt/app-root/src/assets/env.js; rm -rf /opt/app-root/src/sh
 
 CMD /usr/libexec/s2i/run
+
+
+    # COPY upload/src /tmp/src
+
+    #   RUN chown -R 1001:0 /tmp/artifacts.tar /tmp/src
+
+    #   USER 1001
+
+    #   RUN if [ -s /tmp/artifacts.tar ]; then mkdir -p /tmp/artifacts; tar -xf
+    #   /tmp/artifacts.tar -C /tmp/artifacts; fi &&     rm /tmp/artifacts.tar
+
+    #   RUN /usr/libexec/s2i/assemble
+
+    #   RUN /bin/sh -c source /opt/app-root/src/sh/$SH_FILE.sh; envsubst <
+    #   /opt/app-root/src/assets/env.template.js >
+    #   /opt/app-root/src/assets/env.js; rm -rf /opt/app-root/src/sh
+
+    #   CMD /usr/libexec/s2i/run
