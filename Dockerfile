@@ -1,6 +1,8 @@
-FROM registry.redhat.io/rhscl/nginx-116-rhel7 AS cached
+FROM image-registry.openshift-image-registry.svc:5000/openshift4/nginx
 
 RUN /usr/libexec/s2i/assemble
+
+FROM registry.redhat.io/rhscl/nginx-${APP_NGINX_VERSION}-rhel7 AS cached
 
 FROM image-registry.openshift-image-registry.svc:5000/${APP_NAMESPACE}/${APP_APPLICATION_NAME}-builder AS build
 
