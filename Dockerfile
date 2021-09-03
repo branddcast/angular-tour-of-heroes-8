@@ -1,6 +1,8 @@
-FROM image-registry.openshift-image-registry.svc:5000/${APP_NAMESPACE}/${APP_APPLICATION_NAME}-builder AS build
+FROM registry.redhat.io/rhscl/nginx-116-rhel7 AS cached
 
-FROM registry.redhat.io/rhscl/nginx-${APP_NGINX_VERSION}-rhel7 AS cached
+RUN /usr/libexec/s2i/assemble
+
+FROM image-registry.openshift-image-registry.svc:5000/${APP_NAMESPACE}/${APP_APPLICATION_NAME}-builder AS build
 
 USER 1001
 
@@ -17,8 +19,6 @@ COPY --from=build /opt/app-root/src/.sh/. /tmp/env
 USER 1001
 
 RUN if [ -s /tmp/artifacts.tar ]; then mkdir -p /tmp/artifacts; tar -xf /tmp/artifacts.tar -C /tmp/artifacts; fi && rm /tmp/artifacts.tar
-
-RUN /usr/libexec/s2i/assemble
 
 RUN ["/bin/sh", "-c", "export $APP_ENV; envsubst < /opt/app-root/src/assets/env.template.js > /opt/app-root/src/assets/env.js;"]
 
