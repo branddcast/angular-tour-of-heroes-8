@@ -3,6 +3,10 @@ FROM image-registry.openshift-image-registry.svc:5000/openshift/nginx
 LABEL "io.openshift.build.image"="image-registry.openshift-image-registry.svc:5000/openshift/nginx" \ 
       "io.openshift.build.source-location"="/tmp/build/inputs"
 
+USER root
+
+COPY upload/src /tmp/src
+
 USER 1001
 
 RUN if [ -s /usr/libexec/s2i/save-artifacts ]; then /usr/libexec/s2i/save-artifacts > /tmp/artifacts.tar; else touch /tmp/artifacts.tar; fi
