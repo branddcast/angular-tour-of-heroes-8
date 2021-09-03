@@ -1,6 +1,8 @@
 FROM image-registry.openshift-image-registry.svc:5000/openshift/nginx AS cached
 
-LABEL io.openshift.s2i.scripts-url=image:///usr/local/s2i
+LABEL "io.openshift.build.image"="image-registry.openshift-image-registry.svc:5000/openshift/nginx" \     
+      "io.openshift.build.source-location"="/tmp/build/inputs" \
+      "io.openshift.s2i.scripts-url"="image:///usr/local/s2i"
 
 USER root
 
