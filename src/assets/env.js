@@ -1,9 +1,1 @@
-(window => {
-    window["env"] = window["env"] || {};
-
-    window["env"]["host"] = 'https://www.google.com';
-    window["env"]["api"] =  '/abc/defg/';
-    window["env"]["user"] = "Brandon Daniel Jaime Castillo";
-    window["env"]["username"] = "brandon.jaime";
-    window["env"]["env"] = "dev";
-})(this);
+(window => { window.env = window.env || {}; window["env"]["host"] = "http://www.qa.com"; window["env"]["api"] =  "C:/Users/A2277772/AppData/Local/Programs/Git/env/qa/1"; window["env"]["user"] = "Brandon Daniel Jaime Castillo"; window["env"]["username"] = "brandon.jaime"; window["env"]["env"] = "qa"; })(this)
