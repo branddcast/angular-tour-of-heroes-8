@@ -1,6 +1,7 @@
 FROM image-registry.openshift-image-registry.svc:5000/openshift/nginx
 
-LABEL io.openshift.s2i.scripts-url="image:///usr/libexec/s2i"
+LABEL "io.openshift.build.image"="image-registry.openshift-image-registry.svc:5000/openshift/nginx" \ 
+      "io.openshift.build.source-location"="/tmp/build/inputs"
 
 COPY ./s2i/bin/ /usr/libexec/s2i
 
