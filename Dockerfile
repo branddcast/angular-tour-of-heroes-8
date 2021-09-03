@@ -1,4 +1,4 @@
-FROM registry.redhat.io/rhscl/nginx-116-rhel7 AS cached
+FROM image-registry.openshift-image-registry.svc:5000/openshift/nginx AS cached
 
 LABEL io.openshift.s2i.scripts-url=image:///usr/local/s2i
 
