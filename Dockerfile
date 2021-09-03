@@ -1,7 +1,6 @@
 FROM image-registry.openshift-image-registry.svc:5000/openshift/nginx
 
-LABEL "io.openshift.build.image"="image-registry.openshift-image-registry.svc:5000/openshift/nginx" \ 
-      "io.openshift.build.source-location"="/tmp/build/inputs"
+LABEL "io.openshift.build.image"="image-registry.openshift-image-registry.svc:5000/openshift/nginx"
 
 USER root
 
