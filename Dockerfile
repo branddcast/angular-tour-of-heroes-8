@@ -1,4 +1,4 @@
-FROM image-registry.openshift-image-registry.svc:5000/openshift4/nginx
+FROM image-registry.openshift-image-registry.svc:5000/openshift/nginx
 
 RUN /usr/libexec/s2i/assemble
 
