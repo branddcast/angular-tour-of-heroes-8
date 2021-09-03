@@ -1,8 +1,10 @@
 FROM registry.redhat.io/rhscl/nginx-116-rhel7 AS cached
 
+LABEL io.openshift.s2i.scripts-url=image:///usr/local/s2i
+
 USER root
 
-COPY upload/src /tmp/src
+COPY ./s2i/bin/ /usr/local/s2i
 
 USER 1001
 
