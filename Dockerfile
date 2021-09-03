@@ -1,5 +1,9 @@
 FROM image-registry.openshift-image-registry.svc:5000/openshift/nginx
 
+LABEL io.openshift.s2i.scripts-url="image:///usr/libexec/s2i"
+
+COPY ./s2i/bin/ /usr/libexec/s2i
+
 USER 1001
 
 RUN if [ -s /usr/libexec/s2i/save-artifacts ]; then /usr/libexec/s2i/save-artifacts > /tmp/artifacts.tar; else touch /tmp/artifacts.tar; fi
